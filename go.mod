@@ -1,3 +1,5 @@
-module github.com/mlclmj/secret-token
+module github.com/mlclmj/sectok
 
 go 1.15
+
+require github.com/stretchr/testify v1.7.0 // indirect

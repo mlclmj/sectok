@@ -1,4 +1,4 @@
-package sectoken
+package sectok
 
 import (
 	"crypto/subtle"
@@ -9,66 +9,72 @@ import (
 )
 
 type SecretToken struct {
-	token string
+	token []byte
 }
 
 const (
-	URIScheme  string = "secret-token"
+	URIScheme         = "secret-token"
 	URIPattern        = `^secret-token:[a-zA-Z0-9\-._~%]+$`
-	URIFormat         = "secret-token:%s"
+	URIFormat  string = "secret-token:%s"
 )
 
 var (
 	compiledPattern = regexp.MustCompile(URIPattern)
 )
 
-// NewFromString creates a new SecretToken from a string, returning a pointer
-// to a SecretToken instance or an error if invalid UTF-8 characters are
+// FromString creates a new SecretToken from a string, returning a new
+// SecretToken instance or an error if invalid UTF-8 characters are
 // present.
-func NewFromString(token string) (*SecretToken, error) {
+func New(token string) (SecretToken, error) {
 	return NewFromBytes([]byte(token))
 }
 
-// NewFromBytes creates a new SecretToken from a slice of bytes, returning a
+// FromBytes creates a new SecretToken from a slice of bytes, returning a
 // pointer to a SecretToken instance or an error if invalid UTF-8 characters are
 // present.
-func NewFromBytes(token []byte) (*SecretToken, error) {
-	if len(token) < 1 {
-		return nil, fmt.Errorf("secret tokens cannot be empty")
+func NewFromBytes(token []byte) (SecretToken, error) {
+	if len(token) == 0 {
+		return SecretToken{}, fmt.Errorf("secret tokens cannot be empty")
 	}
+
 	if !utf8.Valid(token) {
-		return nil, fmt.Errorf("invalid UTF-8 token")
+		return SecretToken{}, fmt.Errorf("invalid UTF-8 character in secret token")
 	}
-	return &SecretToken{token: url.QueryEscape(string(token))}, nil
+
+	return SecretToken{token: token}, nil
 }
 
-// NewFromURI creates a new SecretToken from a URI string, returning a pointer
-// to a SecretToken instance or an error if the URI is invalid or invalid UTF-8
-// characters are present.
-func NewFromURI(uri string) (*SecretToken, error) {
-	match := compiledPattern.MatchString(uri)
-	if !match {
-		return nil, fmt.Errorf("not a valid secret token URI")
+func Parse(uri string) (SecretToken, error) {
+	return ParseBytes([]byte(uri))
+}
+
+func ParseBytes(uri []byte) (SecretToken, error) {
+	// token is already in URI format
+	if match := compiledPattern.Match(uri); !match {
+		return SecretToken{}, fmt.Errorf("could not parse secret token from URI")
 	}
-
-	// TODO: normalize the URI
-
-	return &SecretToken{token: crack(uri)}, nil
+	t, err := decode(uri)
+	return SecretToken{token: t}, err
 }
 
 // String can be used to generate a string representation of a SecretToken URI.
-// Use Equals()
-func (s *SecretToken) String() string {
-	return fmt.Sprintf(URIFormat, s.token)
+// Use Equals() to compare two SecretTokens
+func (s SecretToken) String() string {
+	return fmt.Sprintf(URIFormat, url.QueryEscape(string(s.token)))
 }
 
 // Equals can be used to check if two SecretTokens match, using a constant-time
 // comparison.
-func (s *SecretToken) Equals(s2 SecretToken) bool {
+func (s SecretToken) Equals(s2 SecretToken) bool {
 	return subtle.ConstantTimeCompare([]byte(s.token), []byte(s2.token)) == 1
 }
 
-// crack can only be used on URIs that have been validated.
-func crack(uri string) string {
-	return uri[len(URIScheme)+2 : len(uri)+1]
+// primitive to decode a token from a URI
+func decode(uri []byte) ([]byte, error) {
+	token := uri[len(URIScheme)+1:]
+	unesc, err := url.QueryUnescape(string(token))
+	if err != nil {
+		return []byte{}, fmt.Errorf("error unescaping token")
+	}
+	return []byte(unesc), nil
 }
